@@ -17,20 +17,20 @@ use object::{
 use windows_sys::Win32::System::SystemServices::PIMAGE_TLS_CALLBACK;
 
 pub struct PeHeaders {
-	pub dos_header: &'static mut ImageDosHeader,
+	pub dos_header: &'static ImageDosHeader,
 	#[cfg(target_arch = "x86_64")]
-	pub nt_header: &'static mut pe::ImageNtHeaders64,
+	pub nt_header: &'static pe::ImageNtHeaders64,
 	#[cfg(target_arch = "x86")]
-	pub nt_header: &'static mut pe::ImageNtHeaders32,
-	pub data_directories: &'static mut [ImageDataDirectory],
-	pub section_headers: &'static mut [ImageSectionHeader],
+	pub nt_header: &'static pe::ImageNtHeaders32,
+	pub data_directories: &'static [ImageDataDirectory],
+	pub section_headers: &'static [ImageSectionHeader],
 }
 
 impl PeHeaders {
 	#[cfg_attr(feature = "debug", inline(never))]
-	pub unsafe fn parse(address: *mut u8) -> Result<Self> {
+	pub unsafe fn parse(address: *const u8) -> Result<Self> {
 		let dos_header_ptr = address;
-		let dos_header = unsafe { &mut *dos_header_ptr.cast::<ImageDosHeader>() };
+		let dos_header = unsafe { &*dos_header_ptr.cast::<ImageDosHeader>() };
 		if dos_header.e_magic.get(LittleEndian) != IMAGE_DOS_SIGNATURE {
 			return Err(Error::PeHeaders);
 		}
@@ -41,9 +41,9 @@ impl PeHeaders {
 		}
 		let nt_header_ptr = unsafe { address.add(nt_header_offset) };
 		#[cfg(target_arch = "x86_64")]
-		let nt_header = unsafe { &mut *nt_header_ptr.cast::<pe::ImageNtHeaders64>() };
+		let nt_header = unsafe { &*nt_header_ptr.cast::<pe::ImageNtHeaders64>() };
 		#[cfg(target_arch = "x86")]
-		let nt_header = unsafe { &mut *nt_header_ptr.cast::<ImageNtHeaders32>() };
+		let nt_header = unsafe { &*nt_header_ptr.cast::<ImageNtHeaders32>() };
 		if nt_header.signature.get(LittleEndian) != IMAGE_NT_SIGNATURE {
 			return Err(Error::PeHeaders);
 		}
@@ -56,7 +56,7 @@ impl PeHeaders {
 		let data_directories_ptr = unsafe { nt_header_ptr.add(size_of::<pe::ImageNtHeaders32>()) };
 		let num_data_directories = nt_header.optional_header().number_of_rva_and_sizes() as _;
 		let data_directories = unsafe {
-			slice::from_raw_parts_mut(
+			slice::from_raw_parts(
 				data_directories_ptr.cast::<ImageDataDirectory>(),
 				num_data_directories,
 			)
@@ -66,7 +66,7 @@ impl PeHeaders {
 		};
 		let num_section_headers = nt_header.file_header().number_of_sections.get(LittleEndian) as _;
 		let section_headers = unsafe {
-			slice::from_raw_parts_mut(
+			slice::from_raw_parts(
 				section_headers_ptr.cast::<ImageSectionHeader>(),
 				num_section_headers,
 			)
@@ -81,7 +81,7 @@ impl PeHeaders {
 	}
 
 	#[cfg_attr(feature = "debug", inline(never))]
-	pub unsafe fn export_table_mem(&self, image_base: *mut u8) -> Result<ExportTable> {
+	pub unsafe fn export_table_mem(&self, image_base: *const u8) -> Result<ExportTable> {
 		let export_table_data_dir = self
 			.data_directories
 			.get(IMAGE_DIRECTORY_ENTRY_EXPORT)
@@ -97,7 +97,7 @@ impl PeHeaders {
 	}
 
 	#[cfg_attr(feature = "debug", inline(never))]
-	pub unsafe fn import_table_mem(&self, image_base: *mut u8) -> Result<ImportTable> {
+	pub unsafe fn import_table_mem(&self, image_base: *const u8) -> Result<ImportTable> {
 		let import_table_data_dir = self
 			.data_directories
 			.get(IMAGE_DIRECTORY_ENTRY_IMPORT)
@@ -109,7 +109,7 @@ impl PeHeaders {
 	}
 
 	#[cfg_attr(feature = "debug", inline(never))]
-	pub unsafe fn debug_table_mem(&self, image_base: *mut u8) -> Result<DebugTable> {
+	pub unsafe fn debug_table_mem(&self, image_base: *const u8) -> Result<DebugTable> {
 		let debug_table_data_dir = self
 			.data_directories
 			.get(IMAGE_DIRECTORY_ENTRY_DEBUG)
@@ -121,7 +121,7 @@ impl PeHeaders {
 	}
 
 	#[cfg_attr(feature = "debug", inline(never))]
-	pub unsafe fn tls_table_mem(&self, image_base: *mut u8) -> Result<Option<TlsDir>> {
+	pub unsafe fn tls_table_mem(&self, image_base: *const u8) -> Result<Option<TlsDir>> {
 		let tls_table_data_dir = self
 			.data_directories
 			.get(IMAGE_DIRECTORY_ENTRY_TLS)
@@ -137,19 +137,19 @@ impl PeHeaders {
 }
 
 pub struct ExportTable {
-	pub export_directory: &'static mut ImageExportDirectory,
-	pub address_table: &'static mut [u32],
-	pub name_table: &'static mut [u32],
-	pub ordinal_table: &'static mut [u16],
-	pub start_address: *mut u8,
+	pub export_directory: &'static ImageExportDirectory,
+	pub address_table: &'static [u32],
+	pub name_table: &'static [u32],
+	pub ordinal_table: &'static [u16],
+	pub start_address: *const u8,
 	pub size: u32,
 }
 
 impl ExportTable {
 	#[cfg_attr(feature = "debug", inline(never))]
-	pub unsafe fn parse(address: *mut u8, rva: usize, size: u32) -> Self {
+	pub unsafe fn parse(address: *const u8, rva: usize, size: u32) -> Self {
 		let export_directory_ptr = address;
-		let export_directory = unsafe { &mut *export_directory_ptr.cast::<ImageExportDirectory>() };
+		let export_directory = unsafe { &*export_directory_ptr.cast::<ImageExportDirectory>() };
 
 		let address_table_ptr = unsafe {
 			address
@@ -158,8 +158,7 @@ impl ExportTable {
 				.cast::<u32>()
 		};
 		let address_table_len = export_directory.number_of_functions.get(LittleEndian) as _;
-		let address_table =
-			unsafe { slice::from_raw_parts_mut(address_table_ptr, address_table_len) };
+		let address_table = unsafe { slice::from_raw_parts(address_table_ptr, address_table_len) };
 
 		let name_table_ptr = unsafe {
 			address
@@ -168,7 +167,7 @@ impl ExportTable {
 				.cast::<u32>()
 		};
 		let name_table_len = export_directory.number_of_names.get(LittleEndian) as _;
-		let name_table = unsafe { slice::from_raw_parts_mut(name_table_ptr, name_table_len) };
+		let name_table = unsafe { slice::from_raw_parts(name_table_ptr, name_table_len) };
 
 		let ordinal_table_ptr = unsafe {
 			address
@@ -177,8 +176,7 @@ impl ExportTable {
 				.cast::<u16>()
 		};
 		let ordinal_table_len = export_directory.number_of_names.get(LittleEndian) as _;
-		let ordinal_table =
-			unsafe { slice::from_raw_parts_mut(ordinal_table_ptr, ordinal_table_len) };
+		let ordinal_table = unsafe { slice::from_raw_parts(ordinal_table_ptr, ordinal_table_len) };
 
 		Self {
 			export_directory,
@@ -214,48 +212,48 @@ impl ExportTable {
 }
 
 pub struct ImportTable {
-	pub import_descriptors: &'static mut [ImageImportDescriptor],
+	pub import_descriptors: &'static [ImageImportDescriptor],
 }
 
 impl ImportTable {
 	#[cfg_attr(feature = "debug", inline(never))]
-	pub fn parse(address: *mut u8, size: usize) -> Self {
+	pub fn parse(address: *const u8, size: usize) -> Self {
 		let number_of_entries = size / size_of::<ImageImportDescriptor>() - 1;
 		let import_descriptor_ptr = address.cast::<ImageImportDescriptor>();
 		let import_descriptors =
-			unsafe { slice::from_raw_parts_mut(import_descriptor_ptr, number_of_entries) };
+			unsafe { slice::from_raw_parts(import_descriptor_ptr, number_of_entries) };
 
 		Self { import_descriptors }
 	}
 }
 
 pub struct DebugTable {
-	pub debug_descriptors: &'static mut [ImageDebugDirectory],
+	pub debug_descriptors: &'static [ImageDebugDirectory],
 }
 
 impl DebugTable {
 	#[cfg_attr(feature = "debug", inline(never))]
-	pub fn parse(address: *mut u8, size: usize) -> Self {
+	pub fn parse(address: *const u8, size: usize) -> Self {
 		let number_of_entries = size / size_of::<ImageDebugDirectory>() - 1;
 		let debug_descriptor_ptr = address.cast::<ImageDebugDirectory>();
 		let debug_descriptors =
-			unsafe { slice::from_raw_parts_mut(debug_descriptor_ptr, number_of_entries) };
+			unsafe { slice::from_raw_parts(debug_descriptor_ptr, number_of_entries) };
 
 		Self { debug_descriptors }
 	}
 }
 
 pub struct TlsDir {
-	pub tls_dir: &'static mut ImageTlsDirectory64,
+	pub tls_dir: &'static ImageTlsDirectory64,
 }
 
 impl TlsDir {
 	#[cfg_attr(feature = "debug", inline(never))]
-	pub fn parse(address: *mut u8) -> Self {
+	pub fn parse(address: *const u8) -> Self {
 		#[cfg(target_arch = "x86_64")]
-		let tls_dir = unsafe { &mut *address.cast::<pe::ImageTlsDirectory64>() };
+		let tls_dir = unsafe { &*address.cast::<pe::ImageTlsDirectory64>() };
 		#[cfg(target_arch = "x86")]
-		let tls_dir = unsafe { &mut *address.cast::<pe::ImageTlsDirectory32>() };
+		let tls_dir = unsafe { &*address.cast::<pe::ImageTlsDirectory32>() };
 
 		Self { tls_dir }
 	}
