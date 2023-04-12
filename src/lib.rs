@@ -14,6 +14,7 @@ use object::{
 	read::pe::{ImageNtHeaders, ImageOptionalHeader},
 	LittleEndian,
 };
+use windows_sys::Win32::System::SystemServices::PIMAGE_TLS_CALLBACK;
 
 pub struct PeHeaders {
 	pub dos_header: &'static mut ImageDosHeader,
@@ -127,8 +128,11 @@ impl PeHeaders {
 			.ok_or(Error::TlsTable)?;
 		let tls_table_rva = tls_table_data_dir.virtual_address.get(LittleEndian);
 		let _tls_table_size = tls_table_data_dir.size.get(LittleEndian);
+		if tls_table_rva == 0 {
+			return Ok(None);
+		}
 		let tls_table_ptr = unsafe { image_base.add(tls_table_rva as _) };
-		Ok(TlsDir::parse(tls_table_ptr))
+		Ok(Some(TlsDir::parse(tls_table_ptr)))
 	}
 }
 
@@ -247,13 +251,39 @@ pub struct TlsDir {
 
 impl TlsDir {
 	#[cfg_attr(feature = "debug", inline(never))]
-	pub fn parse(address: *mut u8) -> Option<Self> {
-		if address.is_null() {
-			return None;
-		}
+	pub fn parse(address: *mut u8) -> Self {
+		#[cfg(target_arch = "x86_64")]
+		let tls_dir = unsafe { &mut *address.cast::<pe::ImageTlsDirectory64>() };
+		#[cfg(target_arch = "x86")]
+		let tls_dir = unsafe { &mut *address.cast::<pe::ImageTlsDirectory32>() };
 
-		let tls_dir = unsafe { &mut *address.cast::<ImageTlsDirectory64>() };
+		Self { tls_dir }
+	}
 
-		Some(Self { tls_dir })
+	#[cfg_attr(feature = "debug", inline(never))]
+	pub fn callbacks(&self) -> TlsCallbacks {
+		let callback_addr =
+			self.tls_dir.address_of_call_backs.get(LittleEndian) as *const PIMAGE_TLS_CALLBACK;
+		TlsCallbacks { callback_addr }
+	}
+}
+
+pub struct TlsCallbacks {
+	callback_addr: *const PIMAGE_TLS_CALLBACK,
+}
+
+type TlsCallback = unsafe extern "system" fn(
+	dllhandle: *mut std::ffi::c_void,
+	reason: u32,
+	reserved: *mut std::ffi::c_void,
+);
+
+impl Iterator for TlsCallbacks {
+	type Item = TlsCallback;
+
+	fn next(&mut self) -> Option<Self::Item> {
+		let ret = unsafe { *self.callback_addr };
+		unsafe { self.callback_addr.add(1) };
+		ret
 	}
 }
