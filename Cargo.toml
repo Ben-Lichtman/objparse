@@ -1,0 +1,12 @@
+[package]
+name = "objparse"
+version = "0.1.0"
+edition = "2021"
+
+[features]
+default = ["debug"]
+debug = []
+
+[dependencies]
+object = "0.30.0"
+thiserror = "1.0.38"
