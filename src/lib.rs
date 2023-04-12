@@ -112,7 +112,7 @@ impl PeHeaders {
 		let debug_table_data_dir = self
 			.data_directories
 			.get(IMAGE_DIRECTORY_ENTRY_DEBUG)
-			.ok_or(Error::ImportTable)?;
+			.ok_or(Error::DebugTable)?;
 		let debug_table_rva = debug_table_data_dir.virtual_address.get(LittleEndian);
 		let debug_table_size = debug_table_data_dir.size.get(LittleEndian);
 		let debug_table_ptr = unsafe { image_base.add(debug_table_rva as _) };
@@ -124,7 +124,7 @@ impl PeHeaders {
 		let tls_table_data_dir = self
 			.data_directories
 			.get(IMAGE_DIRECTORY_ENTRY_TLS)
-			.ok_or(Error::ImportTable)?;
+			.ok_or(Error::TlsTable)?;
 		let tls_table_rva = tls_table_data_dir.virtual_address.get(LittleEndian);
 		let _tls_table_size = tls_table_data_dir.size.get(LittleEndian);
 		let tls_table_ptr = unsafe { image_base.add(tls_table_rva as _) };
