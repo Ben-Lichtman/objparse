@@ -281,7 +281,7 @@ impl Iterator for TlsCallbacks {
 
 	fn next(&mut self) -> Option<Self::Item> {
 		let ret = unsafe { *self.callback_addr };
-		unsafe { self.callback_addr.add(1) };
+		unsafe { self.callback_addr = self.callback_addr.add(1) };
 		ret
 	}
 }
